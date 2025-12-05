@@ -6240,9 +6240,25 @@ async function loadWhatsAppMessagesView(append = false) {
     // Setup search functionality
     setupWhatsAppSearch();
 
-    // Fetch ALL ads (not paginated) by setting a very high limit
-    // This ensures we get all accepted ads with WhatsApp messages
-    const response = await fetch(`/api/bot/ads?limit=10000&_=${Date.now()}`, {
+    // Build query params for the optimized endpoint
+    const params = new URLSearchParams({
+      page: whatsappMessagesState.currentPage,
+      limit: whatsappMessagesState.itemsPerPage,
+      status: whatsappMessagesState.filterStatus,
+    });
+
+    if (whatsappMessagesState.filterWebsite !== "all") {
+      params.append("website", whatsappMessagesState.filterWebsite);
+    }
+    if (whatsappMessagesState.filterGroup !== "all") {
+      params.append("group", whatsappMessagesState.filterGroup);
+    }
+    if (whatsappMessagesState.filterCategory !== "all") {
+      params.append("category", whatsappMessagesState.filterCategory);
+    }
+
+    // Use the optimized endpoint that pre-filters server-side
+    const response = await fetch(`/api/bot/ads/whatsapp-messages?${params.toString()}`, {
       credentials: "include",
       cache: "no-cache",
     });
@@ -6258,114 +6274,75 @@ async function loadWhatsAppMessagesView(append = false) {
     }
 
     const data = await response.json();
-    let ads = data.ads || [];
+    const ads = data.ads || [];
+    const pagination = data.pagination || {};
 
-    console.log(`📦 Fetched ${ads.length} total ads from API (limit=10000)`);
+    console.log(`📦 WhatsApp messages loaded: ${ads.length} (page ${pagination.currentPage}/${pagination.totalPages}, total: ${pagination.totalAds})`);
 
-    // Filter ads that are accepted AND have a WhatsApp message generated
-    ads = ads.filter((ad) => ad.status === "accepted" && ad.whatsappMessage);
-
-    console.log("=".repeat(70));
-    console.log("📊 WHATSAPP MESSAGES DEBUGGING INFO");
-    console.log("=".repeat(70));
-    console.log(`Total ads from API: ${data.ads?.length || 0}`);
-    console.log(`Filtered ads with WhatsApp messages: ${ads.length}`);
-    console.log(`Items per page: ${whatsappMessagesState.itemsPerPage}`);
-
-    // Show details of filtered ads
-    if (ads.length > 0) {
-      console.log("\n📋 List of ads with WhatsApp messages:");
-      ads.forEach((ad, i) => {
-        console.log(
-          `  ${i + 1}. ${ad.id} - ${ad.category || "No category"} - ${new Date(
-            ad.timestamp
-          ).toLocaleDateString()}`
-        );
-      });
-    }
-
-    // Calculate expected pagination
-    const expectedPages = Math.ceil(
-      ads.length / whatsappMessagesState.itemsPerPage
-    );
-    console.log(`\n📄 Expected total pages: ${expectedPages}`);
-    console.log(`Current page: ${whatsappMessagesState.currentPage}`);
-    console.log(
-      `Should show Load More? ${
-        ads.length > whatsappMessagesState.itemsPerPage
-      }`
-    );
-    console.log("=".repeat(70));
-
-    // Store all messages if not appending
+    // Store for search functionality
     if (!append) {
       whatsappMessagesState.allMessages = ads;
-      whatsappMessagesState.currentPage = 1;
-
-      // Populate category filter dropdown
-      populateWhatsAppCategoryFilter(ads);
-      // Populate group filter dropdown
-      populateWhatsAppGroupFilter(ads);
+      whatsappMessagesState.totalMessages = pagination.totalAds;
+      
+      // Populate filter dropdowns from server data
+      populateWhatsAppCategoryFilterFromData(data.allCategories || []);
+      populateWhatsAppGroupFilterFromData(data.allGroups || []);
+    } else {
+      // Append new messages
+      whatsappMessagesState.allMessages = [...whatsappMessagesState.allMessages, ...ads];
     }
 
-    console.log(
-      "✅ Total WhatsApp messages stored:",
-      whatsappMessagesState.allMessages.length
-    );
-    console.log("Current page:", whatsappMessagesState.currentPage);
-    console.log("Items per page:", whatsappMessagesState.itemsPerPage);
+    // Update count
+    updateWhatsAppMessagesCount(pagination.totalAds);
 
     if (!listContainer) return;
 
-    if (whatsappMessagesState.allMessages.length === 0) {
+    if (pagination.totalAds === 0) {
       listContainer.innerHTML =
         '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #666;"><i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.3;"></i><p>No accepted ads with WhatsApp messages yet. Messages will appear here after ads are accepted and posted to WordPress.</p></div>';
       return;
     }
-
-    // Apply filters and sorting
-    const filteredMessages = applyWhatsAppFilters(
-      whatsappMessagesState.allMessages
-    );
-
-    console.log("Filtered messages after filters:", filteredMessages.length);
-
-    // Update count
-    updateWhatsAppMessagesCount(filteredMessages.length);
-
-    // Calculate pagination - show from beginning to current page
-    const startIndex = 0;
-    const endIndex =
-      whatsappMessagesState.currentPage * whatsappMessagesState.itemsPerPage;
-    const messagesToShow = filteredMessages.slice(startIndex, endIndex);
-    const hasMore = endIndex < filteredMessages.length;
-
-    console.log(
-      `📄 Pagination: showing ${messagesToShow.length} items (${startIndex} to ${endIndex}), hasMore: ${hasMore}`
-    );
 
     // Render messages
     if (!append) {
       listContainer.innerHTML = "";
     } else {
       // Remove load more button if it exists
-      const loadMoreBtn = listContainer.querySelector(
-        ".load-more-whatsapp-container"
-      );
+      const loadMoreBtn = listContainer.querySelector(".load-more-whatsapp-container");
       if (loadMoreBtn) {
         loadMoreBtn.remove();
       }
     }
 
-    renderWhatsAppMessageCards(messagesToShow, listContainer);
+    // Apply local search if any (filters are server-side now)
+    let messagesToRender = ads;
+    if (whatsappMessagesState.searchQuery && whatsappMessagesState.searchQuery.trim()) {
+      const query = whatsappMessagesState.searchQuery.toLowerCase().trim();
+      messagesToRender = ads.filter((ad) => {
+        const searchableText = [
+          ad.text,
+          ad.enhancedText,
+          ad.whatsappMessage,
+          ad.fromGroupName,
+          ad.category,
+          ad.wpData?.title?.rendered,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return searchableText.includes(query);
+      });
+    }
+
+    renderWhatsAppMessageCards(messagesToRender, listContainer);
 
     // Add load more button if there are more messages
-    if (hasMore) {
+    if (pagination.hasMore) {
       console.log("✅ Adding Load More button");
-      addLoadMoreWhatsAppButton(listContainer, filteredMessages.length);
-    } else if (messagesToShow.length > 0) {
-      console.log("✅ All messages loaded, showing end message");
-      addEndMessageWhatsApp(listContainer, filteredMessages.length);
+      addLoadMoreWhatsAppButton(listContainer, pagination.totalAds);
+    } else if (messagesToRender.length > 0) {
+      console.log("✅ All messages loaded");
+      addEndMessageWhatsApp(listContainer, pagination.totalAds);
     }
   } catch (err) {
     console.error("Error loading WhatsApp messages:", err);
@@ -6374,6 +6351,46 @@ async function loadWhatsAppMessagesView(append = false) {
       listContainer.innerHTML =
         '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #dc3545;">Failed to load messages. Please try again.</div>';
     }
+  }
+}
+
+// Populate category filter from server data
+function populateWhatsAppCategoryFilterFromData(categories) {
+  const categorySelect = document.getElementById("whatsapp-filter-category");
+  if (!categorySelect) return;
+
+  const currentValue = categorySelect.value;
+  categorySelect.innerHTML = '<option value="all">📁 All Categories</option>';
+
+  categories.forEach((category) => {
+    const option = document.createElement("option");
+    option.value = category;
+    option.textContent = category;
+    categorySelect.appendChild(option);
+  });
+
+  if (currentValue && currentValue !== "all") {
+    categorySelect.value = currentValue;
+  }
+}
+
+// Populate group filter from server data
+function populateWhatsAppGroupFilterFromData(groups) {
+  const groupSelect = document.getElementById("whatsapp-filter-group");
+  if (!groupSelect) return;
+
+  const currentValue = groupSelect.value;
+  groupSelect.innerHTML = '<option value="all">👥 All Groups</option>';
+
+  groups.sort((a, b) => a.name.localeCompare(b.name)).forEach((group) => {
+    const option = document.createElement("option");
+    option.value = group.id;
+    option.textContent = group.name;
+    groupSelect.appendChild(option);
+  });
+
+  if (currentValue && currentValue !== "all") {
+    groupSelect.value = currentValue;
   }
 }
 

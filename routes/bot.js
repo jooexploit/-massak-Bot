@@ -917,6 +917,106 @@ router.get(
   }
 );
 
+// Get WhatsApp messages - optimized endpoint (admin and author)
+// Pre-filters to only accepted ads with WhatsApp messages for performance
+router.get(
+  "/ads/whatsapp-messages",
+  authenticateToken,
+  authorizeRole(["admin", "author"]),
+  (req, res) => {
+    try {
+      const { page = 1, limit = 12, website, group, category, status } = req.query;
+
+      let ads = getFetchedAds();
+
+      // Collect unique groups and categories from ALL matching ads (before pagination)
+      const groupsMap = new Map();
+      const categoriesSet = new Set();
+
+      // Pre-filter: only accepted ads with whatsappMessage
+      ads = ads.filter((ad) => {
+        const hasWhatsApp = ad.whatsappMessage && ad.whatsappMessage.trim();
+        
+        // For status filter - default to 'pending' (not sent)
+        if (status === 'sent') {
+          return ad.status === 'accepted' && hasWhatsApp && ad.sentToGroups && ad.sentToGroups.length > 0;
+        } else if (status === 'pending') {
+          return ad.status === 'accepted' && hasWhatsApp && (!ad.sentToGroups || ad.sentToGroups.length === 0);
+        } else {
+          // 'all' - any accepted with whatsapp message
+          return ad.status === 'accepted' && hasWhatsApp;
+        }
+      });
+
+      // Collect groups and categories
+      ads.forEach((ad) => {
+        if (ad.fromGroupName && ad.fromGroup) {
+          groupsMap.set(ad.fromGroup, { id: ad.fromGroup, name: ad.fromGroupName });
+        }
+        const meta = ad.wpData && ad.wpData.meta ? ad.wpData.meta : {};
+        const effectiveCategory = meta.arc_category || meta.parent_catt || ad.category;
+        if (effectiveCategory) {
+          categoriesSet.add(effectiveCategory);
+        }
+      });
+
+      const allGroups = Array.from(groupsMap.values());
+      const allCategories = Array.from(categoriesSet).sort();
+
+      // Apply additional filters
+      if (website && website !== "all") {
+        ads = ads.filter((a) => {
+          if (a.targetWebsite) return a.targetWebsite === website;
+          if (a.wpData && a.wpData.targetWebsite) return a.wpData.targetWebsite === website;
+          return false;
+        });
+      }
+
+      if (group && group !== "all") {
+        ads = ads.filter((a) => a.fromGroup === group || a.fromGroupName === group);
+      }
+
+      if (category && category !== "all") {
+        ads = ads.filter((a) => {
+          const meta = a.wpData && a.wpData.meta ? a.wpData.meta : {};
+          const effectiveCategory = meta.arc_category || meta.parent_catt || a.category;
+          return effectiveCategory === category;
+        });
+      }
+
+      // Sort by timestamp descending (newest first)
+      ads.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      // Calculate pagination
+      const totalAds = ads.length;
+      const totalPages = Math.ceil(totalAds / limit) || 1;
+      const currentPage = Math.max(1, Math.min(parseInt(page), totalPages));
+      const startIndex = (currentPage - 1) * parseInt(limit);
+      const endIndex = startIndex + parseInt(limit);
+
+      // Get paginated results
+      const paginatedAds = ads.slice(startIndex, endIndex);
+
+      res.json({
+        success: true,
+        ads: paginatedAds,
+        allGroups,
+        allCategories,
+        pagination: {
+          currentPage,
+          totalPages,
+          totalAds,
+          limit: parseInt(limit),
+          hasMore: currentPage < totalPages,
+        },
+      });
+    } catch (err) {
+      console.error("Error listing WhatsApp messages:", err);
+      res.status(500).json({ error: "Failed to list WhatsApp messages" });
+    }
+  }
+);
+
 // Get ad by ID with generated data (admin and author)
 router.get(
   "/ads/:id",
