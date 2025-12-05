@@ -87,7 +87,18 @@ const RECYCLE_BIN_FILE = path.join(__dirname, "..", "data", "recycle_bin.json");
 const SETTINGS_FILE = path.join(__dirname, "..", "data", "settings.json");
 let ads = [];
 let recycleBin = []; // Messages rejected by AI
-let settings = { recycleBinDays: 7, excludedGroups: [] }; // Default: auto-delete after 7 days, no excluded groups
+let settings = { 
+  recycleBinDays: 7, 
+  excludedGroups: [],
+  // Default WhatsApp message footers
+  hasakFooter: `┈┉━🔰 *منصة 🌴حساك* 🔰━┅┄
+*✅إنضم في منصة حساك* 
+https://chat.whatsapp.com/Ge3nhVs0MFT0ILuqDmuGYd?mode=ems_copy_t
+ *✅للإعلانات في منصة حساك* 
+0507667103`,
+  masaakFooter: `┈┉━━🔰 *مسعاك العقارية* 🔰━━┅┄
+⭕ إبراء للذمة التواصل فقط مع مسعاك عند الشراء أو إذا عندك مشتري ✅ نتعاون مع جميع الوسطاء`
+};
 let seenGroups = new Set();
 let groupsMetadata = {}; // Store group metadata (jid -> {name, jid})
 let collections = []; // Store group collections

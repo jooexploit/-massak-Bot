@@ -201,10 +201,12 @@ async function postAdToWordPress(
 
     // If preview only, return early
     if (previewOnly) {
+      const settings = getSettings();
       const whatsappMessage = generateWhatsAppMessage(
         wpData,
         null,
-        targetWebsite
+        targetWebsite,
+        settings
       );
       return {
         success: true,
@@ -626,10 +628,12 @@ async function postAdToWordPress(
     console.log("  - shortLink:", shortLink);
     console.log("  - targetWebsite:", targetWebsite);
 
+    const settings = getSettings();
     const whatsappMessage = generateWhatsAppMessage(
       wpData,
       shortLink,
-      targetWebsite
+      targetWebsite,
+      settings
     );
 
     console.log("  - whatsappMessage generated:", !!whatsappMessage);
@@ -1340,7 +1344,8 @@ router.post(
             const {
               generateWhatsAppMessage,
             } = require("../services/aiService");
-            const whatsappMessage = generateWhatsAppMessage(wpData, shortLink);
+            const settings = getSettings();
+            const whatsappMessage = generateWhatsAppMessage(wpData, shortLink, 'masaak', settings);
 
             // Update ad with WordPress info - keep as "accepted" not "posted"
             ad.status = "accepted";
@@ -1463,7 +1468,8 @@ router.post(
       const wpData = await extractWordPressData(textToEnhance);
 
       // Generate WhatsApp message
-      const whatsappMessage = generateWhatsAppMessage(wpData, null);
+      const settings = getSettings();
+      const whatsappMessage = generateWhatsAppMessage(wpData, null, 'masaak', settings);
 
       // Update the ad with new WordPress data and WhatsApp message
       const ok = updateAdWordPressData(id, wpData, whatsappMessage);
@@ -1950,6 +1956,8 @@ router.put(
         autoApproveWordPress,
         categoryLimits,
         excludedGroups,
+        hasakFooter,
+        masaakFooter,
       } = req.body;
       const updates = {};
 
@@ -2002,6 +2010,21 @@ router.put(
             .json({ error: "excludedGroups must be an array" });
         }
         updates.excludedGroups = excludedGroups;
+      }
+
+      // Validate and update footer settings
+      if (hasakFooter !== undefined) {
+        if (typeof hasakFooter !== "string") {
+          return res.status(400).json({ error: "hasakFooter must be a string" });
+        }
+        updates.hasakFooter = hasakFooter;
+      }
+
+      if (masaakFooter !== undefined) {
+        if (typeof masaakFooter !== "string") {
+          return res.status(400).json({ error: "masaakFooter must be a string" });
+        }
+        updates.masaakFooter = masaakFooter;
       }
 
       if (categoryLimits !== undefined) {

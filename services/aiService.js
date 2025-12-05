@@ -1314,11 +1314,23 @@ function detectCategoryFallback(text) {
  * Generate WhatsApp message from WordPress data
  * @param {object} wpData - WordPress data
  * @param {string} wpLink - WordPress post link
+ * @param {string} website - Target website ('masaak' or 'hasak')
+ * @param {object} settings - Optional settings object with custom footers
  * @returns {string} - Formatted WhatsApp message
  */
-function generateWhatsAppMessage(wpData, wpLink = null, website = "masaak") {
+function generateWhatsAppMessage(wpData, wpLink = null, website = "masaak", settings = null) {
   const meta = wpData.meta || {};
   let message = "";
+  
+  // Default footers (used if settings not provided)
+  const defaultHasakFooter = `┈┉━🔰 *منصة 🌴حساك* 🔰━┅┄
+*✅إنضم في منصة حساك* 
+https://chat.whatsapp.com/Ge3nhVs0MFT0ILuqDmuGYd?mode=ems_copy_t
+ *✅للإعلانات في منصة حساك* 
+0507667103`;
+  
+  const defaultMasaakFooter = `┈┉━━🔰 *مسعاك العقارية* 🔰━━┅┄
+⭕ إبراء للذمة التواصل فقط مع مسعاك عند الشراء أو إذا عندك مشتري ✅ نتعاون مع جميع الوسطاء`;
 
   // Different format for Hasak vs Masaak
   if (website === "hasak") {
@@ -1333,12 +1345,9 @@ function generateWhatsAppMessage(wpData, wpLink = null, website = "masaak") {
       message += `👈 للتفاصيل اضغط على الرابط: ${wpLink}\n`;
     }
 
-    // Add Hasak footer
-    message += `\n┈┉━🔰 *منصة 🌴حساك* 🔰━┅┄\n`;
-    message += `*✅إنضم في منصة حساك* \n`;
-    message += `https://chat.whatsapp.com/Ge3nhVs0MFT0ILuqDmuGYd?mode=ems_copy_t\n`;
-    message += ` *✅للإعلانات في منصة حساك* \n`;
-    message += `0507667103`;
+    // Add Hasak footer (from settings or default)
+    const hasakFooter = (settings && settings.hasakFooter) ? settings.hasakFooter : defaultHasakFooter;
+    message += `\n${hasakFooter}`;
   } else {
     // Masaak format: Title, Price, Space, Location, Contact, Link, Footer
     // Add title
@@ -1423,9 +1432,9 @@ function generateWhatsAppMessage(wpData, wpLink = null, website = "masaak") {
       message += `\n👈 *للتفاصيل اضغط على الرابط:* ${wpLink}\n`;
     }
 
-    // Add Masaak footer
-    message += `\n┈┉━━🔰 *مسعاك العقارية* 🔰━━┅┄\n`;
-    message += `⭕ إبراء للذمة التواصل فقط مع مسعاك عند الشراء أو إذا عندك مشتري ✅ نتعاون مع جميع الوسطاء`;
+    // Add Masaak footer (from settings or default)
+    const masaakFooter = (settings && settings.masaakFooter) ? settings.masaakFooter : defaultMasaakFooter;
+    message += `\n${masaakFooter}`;
   }
 
   return message.trim();

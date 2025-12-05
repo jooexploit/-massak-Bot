@@ -1377,6 +1377,37 @@ body {
     border-color: #bd2130;
 }
 
+/* Collection Pills for Quick Send */
+.collection-pills-container {
+    padding: 10px 0;
+    border-top: 1px solid #e0e0e0;
+}
+
+.collection-pill {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: all 0.2s ease;
+    min-width: 80px;
+}
+
+.collection-pill:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.collection-pill:active {
+    transform: translateY(0);
+}
+
 /* Info message styles */
 .info-message {
     padding: 12px 20px;

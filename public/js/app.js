@@ -4363,6 +4363,39 @@ async function loadSettingsView() {
     // Load category limits
     renderCategoryLimits(data.settings.categoryLimits || []);
 
+    // Load WhatsApp message footers
+    const hasakFooterInput = document.getElementById("hasak-footer");
+    const masaakFooterInput = document.getElementById("masaak-footer");
+    
+    // Default footers
+    const defaultHasakFooter = `┈┉━🔰 *منصة 🌴حساك* 🔰━┅┄
+*✅إنضم في منصة حساك* 
+https://chat.whatsapp.com/Ge3nhVs0MFT0ILuqDmuGYd?mode=ems_copy_t
+ *✅للإعلانات في منصة حساك* 
+0507667103`;
+    
+    const defaultMasaakFooter = `┈┉━━🔰 *مسعاك العقارية* 🔰━━┅┄
+⭕ إبراء للذمة التواصل فقط مع مسعاك عند الشراء أو إذا عندك مشتري ✅ نتعاون مع جميع الوسطاء`;
+    
+    if (hasakFooterInput) {
+      hasakFooterInput.value = data.settings.hasakFooter || defaultHasakFooter;
+    }
+    if (masaakFooterInput) {
+      masaakFooterInput.value = data.settings.masaakFooter || defaultMasaakFooter;
+    }
+    
+    // Add reset footers button handler
+    const resetFootersBtn = document.getElementById("reset-footers-btn");
+    if (resetFootersBtn) {
+      resetFootersBtn.onclick = () => {
+        if (confirm("Reset footers to default values?")) {
+          if (hasakFooterInput) hasakFooterInput.value = defaultHasakFooter;
+          if (masaakFooterInput) masaakFooterInput.value = defaultMasaakFooter;
+          showMessage("settings-message", "Footers reset to defaults. Click 'Save All Settings' to apply.", "success");
+        }
+      };
+    }
+
     // Fetch and load collections
     try {
       const collectionsResp = await fetch("/api/bot/collections", {
@@ -5699,6 +5732,10 @@ async function handleSaveAllSettings() {
   const wpUsername = document.getElementById("wp-username");
   const wpPassword = document.getElementById("wp-password");
 
+  // Get footer settings
+  const hasakFooterInput = document.getElementById("hasak-footer");
+  const masaakFooterInput = document.getElementById("masaak-footer");
+
   try {
     const settings = {
       recycleBinDays: days,
@@ -5706,6 +5743,8 @@ async function handleSaveAllSettings() {
       wordpressUsername: wpUsername ? wpUsername.value : "",
       wordpressPassword: wpPassword ? wpPassword.value : "",
       excludedGroups: currentExcludedGroups, // Include excluded groups
+      hasakFooter: hasakFooterInput ? hasakFooterInput.value : undefined,
+      masaakFooter: masaakFooterInput ? masaakFooterInput.value : undefined,
     };
 
     const response = await fetch("/api/bot/settings", {
@@ -6755,6 +6794,82 @@ function renderWhatsAppMessageCards(ads, container) {
       }
     `;
 
+    // Collection quick-select section (only if collections exist and message is available)
+    const collectionsSection = document.createElement("div");
+    collectionsSection.className = "collection-pills-container";
+    collectionsSection.style.cssText = `
+      padding: 10px 0;
+      border-top: 1px solid #e0e0e0;
+    `;
+
+    // Only show if we have collections and a whatsapp message
+    if (allCollections && allCollections.length > 0 && ad.whatsappMessage) {
+      const label = document.createElement("div");
+      label.style.cssText = `
+        font-size: 0.75rem;
+        color: #666;
+        margin-bottom: 8px;
+        font-weight: 500;
+      `;
+      label.innerHTML = '<i class="fas fa-folder"></i> Quick Send to Collection:';
+      collectionsSection.appendChild(label);
+
+      const pillsWrapper = document.createElement("div");
+      pillsWrapper.style.cssText = `
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      `;
+
+      allCollections.forEach((collection) => {
+        const groupCount = collection.groups ? collection.groups.length : 0;
+        const pill = document.createElement("button");
+        pill.className = "collection-pill";
+        pill.style.cssText = `
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border: none;
+          border-radius: 16px;
+          padding: 6px 12px;
+          font-size: 0.75rem;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          transition: all 0.2s ease;
+          min-width: 80px;
+        `;
+        pill.innerHTML = `
+          <span style="font-weight: 600;">${escapeHtml(collection.name)}</span>
+          <span style="font-size: 0.65rem; opacity: 0.9;">${groupCount} groups</span>
+        `;
+        pill.title = `Send to ${collection.name} (${groupCount} groups)`;
+        pill.onmouseenter = () => {
+          pill.style.transform = "translateY(-2px)";
+          pill.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
+        };
+        pill.onmouseleave = () => {
+          pill.style.transform = "translateY(0)";
+          pill.style.boxShadow = "none";
+        };
+        pill.onclick = (e) => {
+          e.stopPropagation();
+          quickSendToCollection(ad.id, ad, collection, card);
+        };
+        pillsWrapper.appendChild(pill);
+      });
+
+      collectionsSection.appendChild(pillsWrapper);
+    } else if (!ad.whatsappMessage) {
+      // Show helpful message if no whatsapp message yet
+      collectionsSection.innerHTML = `
+        <div style="font-size: 0.75rem; color: #999; text-align: center; padding: 8px;">
+          <i class="fas fa-info-circle"></i> Quick send available after WordPress posting
+        </div>
+      `;
+    }
+
     // Action buttons
     const actionButtons = document.createElement("div");
     actionButtons.style.cssText = `
@@ -6764,6 +6879,7 @@ function renderWhatsAppMessageCards(ads, container) {
       padding-top: 10px;
       border-top: 1px solid #e0e0e0;
     `;
+
 
     // View full ad button
     const viewButton = document.createElement("button");
@@ -6780,29 +6896,32 @@ function renderWhatsAppMessageCards(ads, container) {
     let acceptButton, rejectButton;
 
     if (wasSent) {
-      // Show resend button for sent messages
-      const resendButton = document.createElement("button");
-      resendButton.className = "btn btn-sm btn-info";
-      resendButton.innerHTML = '<i class="fas fa-redo"></i> Resend';
-      resendButton.style.cssText = `
+      // Show "More" button for custom group selection
+      const moreButton = document.createElement("button");
+      moreButton.className = "btn btn-sm btn-info";
+      moreButton.innerHTML = '<i class="fas fa-ellipsis-h"></i> More';
+      moreButton.title = "More options (custom group selection)";
+      moreButton.style.cssText = `
         flex: 1;
         padding: 8px;
         font-size: 0.85rem;
       `;
-      resendButton.onclick = () => handleAcceptWhatsAppMessage(ad.id, ad, card);
+      moreButton.onclick = () => handleAcceptWhatsAppMessage(ad.id, ad, card);
       actionButtons.appendChild(viewButton);
-      actionButtons.appendChild(resendButton);
+      actionButtons.appendChild(moreButton);
       card.appendChild(messagePreview);
       card.appendChild(metadata);
+      card.appendChild(collectionsSection);
       card.appendChild(actionButtons);
       container.appendChild(card);
       return; // Skip adding reject button for sent messages
     }
 
-    // Accept button for pending messages
+    // More options button for pending messages (opens popup for custom selection)
     acceptButton = document.createElement("button");
     acceptButton.className = "btn btn-sm btn-success";
-    acceptButton.innerHTML = '<i class="fas fa-check"></i> Accept';
+    acceptButton.innerHTML = '<i class="fas fa-ellipsis-h"></i> More';
+    acceptButton.title = "More options (custom group selection)";
     acceptButton.style.cssText = `
       flex: 1;
       padding: 8px;
@@ -6827,6 +6946,7 @@ function renderWhatsAppMessageCards(ads, container) {
 
     card.appendChild(messagePreview);
     card.appendChild(metadata);
+    card.appendChild(collectionsSection);
     card.appendChild(actionButtons);
 
     // Hover effect
@@ -6843,7 +6963,121 @@ function renderWhatsAppMessageCards(ads, container) {
   });
 }
 
+// Quick send to a collection - sends message to all groups in the collection
+async function quickSendToCollection(adId, ad, collection, cardElement) {
+  const groups = collection.groups || [];
+  
+  if (groups.length === 0) {
+    alert(`Collection "${collection.name}" has no groups`);
+    return;
+  }
+  
+  if (!ad.whatsappMessage) {
+    alert("No WhatsApp message available. Please post to WordPress first.");
+    return;
+  }
+
+  // Confirm action
+  if (!confirm(`Send message to all ${groups.length} groups in "${collection.name}"?`)) {
+    return;
+  }
+
+  // Update card UI to show sending status
+  const collectionsContainer = cardElement.querySelector(".collection-pills-container");
+  const originalContent = collectionsContainer.innerHTML;
+  
+  collectionsContainer.innerHTML = `
+    <div style="text-align: center; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+      <i class="fas fa-spinner fa-spin"></i> 
+      <span id="quick-send-progress-${adId}">Sending to ${collection.name}... 0/${groups.length}</span>
+    </div>
+  `;
+
+  const progressSpan = document.getElementById(`quick-send-progress-${adId}`);
+  const message = ad.whatsappMessage;
+  const delayMs = 3000; // 3 second delay between messages
+
+  let successCount = 0;
+  let failCount = 0;
+
+  try {
+    for (let i = 0; i < groups.length; i++) {
+      const groupId = groups[i];
+      
+      try {
+        await fetch("/api/bot/send-message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ number: groupId, message }),
+        });
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to send to group ${groupId}:`, err);
+        failCount++;
+      }
+
+      // Update progress
+      if (progressSpan) {
+        progressSpan.textContent = `Sending to ${collection.name}... ${i + 1}/${groups.length}`;
+      }
+
+      // Wait before sending next message (except for last one)
+      if (i < groups.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    // Mark ad as sent to groups
+    try {
+      await fetch(`/api/bot/ads/${adId}/mark-sent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ 
+          groupIds: groups,
+          collectionName: collection.name 
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to mark ad as sent:", err);
+    }
+
+    // Show success message
+    collectionsContainer.innerHTML = `
+      <div style="text-align: center; padding: 10px; background: #d4edda; border-radius: 8px; color: #155724;">
+        <i class="fas fa-check-circle"></i> 
+        Sent to ${successCount}/${groups.length} groups in "${collection.name}"!
+        ${failCount > 0 ? `<br><small style="color: #856404;">${failCount} failed</small>` : ""}
+      </div>
+    `;
+
+    // Update card status badge after 2 seconds
+    setTimeout(() => {
+      cardElement.dataset.status = "sent";
+      const statusBadge = cardElement.querySelector('[style*="background: #ffc107"]');
+      if (statusBadge) {
+        statusBadge.outerHTML = `<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 4px; font-weight: 500;"><i class="fas fa-check-circle"></i> Sent</span>`;
+      }
+    }, 2000);
+
+  } catch (error) {
+    console.error("Error in quickSendToCollection:", error);
+    collectionsContainer.innerHTML = `
+      <div style="text-align: center; padding: 10px; background: #f8d7da; border-radius: 8px; color: #721c24;">
+        <i class="fas fa-exclamation-circle"></i> Error sending messages
+      </div>
+    `;
+    
+    // Restore original content after 3 seconds
+    setTimeout(() => {
+      collectionsContainer.innerHTML = originalContent;
+    }, 3000);
+  }
+}
+
 // View full ad details from WhatsApp message
+
 function viewFullAdFromWhatsApp(adId) {
   // Switch to ads view and focus on the specific ad
   switchView("ads");
